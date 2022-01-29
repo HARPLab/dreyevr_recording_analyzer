@@ -1,5 +1,7 @@
 # recording files
 *.txt
+temp_data/
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
