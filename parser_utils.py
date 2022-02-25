@@ -2,6 +2,150 @@ import numpy as np
 import pandas as pd
 import re
 
+def parse_new_dreyevr_rec(path_to_recording : str, COMBINED_GAZE_ONLY=True):
+    lines = []
+    with open(path_to_recording) as f:
+        lines = f.readlines()
+
+    data = []
+    
+    # create list of recorded values and frame data
+    frame = []
+    for i, line in enumerate(lines):
+        if "Frame " in line:
+            if frame != []:
+                data.append(frame)
+            frame = []
+            frame.append(line.strip("\n"))
+        if "[DReyeVR]" in line:
+            frame.append(line.strip("; \n"))
+        
+    col_names = get_colnames(data, COMBINED_GAZE_ONLY)
+    df = pd.DataFrame(columns = col_names)
+    df.set_index('FrameNum', drop=True, inplace=True)
+    
+    from tqdm import tqdm 
+    
+    for data_row in tqdm(data):
+        parse_and_add_row(data_row, df, COMBINED_GAZE_ONLY)
+    
+    df = df.convert_dtypes()
+    #convert xyztypes
+    string_cols = df.columns[df.dtypes=='string']
+    for string_col in string_cols:
+        df[string_col] = df[string_col].apply(convert_XYZstr2array)
+    
+    return df
+
+def get_colnames(data, COMBINED_GAZE_ONLY):
+    col_names = []
+
+    for row in data[0]:
+        row = row.strip('[DReyeVR]')
+        t1 = row.split(':')    
+        row_header = t1[0]
+        row = ":".join(t1[1:])
+        # print(row_header)
+        row_elements = row.split(',')
+        # row = row.strip(row_header)
+
+        if row_header=='TimestampCarla':
+            col_names.append(row_header)
+            pass
+
+        elif row_header=='EyeTracker':
+            col_names.append(row_elements[0].split(':')[0])
+            col_names.append(row_elements[1].split(':')[0])                       
+            #  re.findall("([A-Z]{2,})", row) returns ['COMBINED', 'LEFT', 'RIGHT']        
+            # combined, left, right = re.findall("\{(.*?)\}", row) # returns the contents of the {}
+            gaze_struct_names = re.findall("([A-Z]{2,})", row)
+            gaze_structs = re.findall("\{(.*?)\}", row)
+            if COMBINED_GAZE_ONLY:
+                gaze_struct_colnames = re.findall("[A-Z][a-z]+(?:[A-Z][a-z]+)*", gaze_structs[0])
+                gaze_struct = gaze_structs[0]
+                gaze_struct_colnames = [x+"_"+gaze_struct_names[0] for x in gaze_struct_colnames]
+            else:
+                raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
+            col_names += gaze_struct_colnames
+            pass
+        elif row_header=='FocusInfo':
+            pass
+        elif row_header=='EgoVariables':
+            pass
+        elif row_header=='UserInputs':
+            for row_element in row_elements:
+                if row_element == '':
+                    continue
+                col_names.append(row_element.split(':')[0])
+            break
+            pass
+        else:
+            # Frame framenum at timestamp seconds
+            col_names.append('FrameNum')
+            col_names.append('TimeElapsed')    
+            # framenum, timestamp = re.findall(r"\d+[.]?\d*", row_header) 
+            # print(framenum, timestamp)
+    return col_names
+
+def parse_and_add_row(data_row, df : pd.DataFrame, COMBINED_GAZE_ONLY):
+    # parse first line to get frame and timestamp for this row
+    frame, timestamp = re.findall(r"\d+[.]?\d*", data_row[0])
+    frame = int(frame)
+    timestamp = float(timestamp)
+    # print(frame, timestamp)
+    df.loc[frame, "TimeElapsed"] = timestamp
+    
+    for row in data_row[1:]:
+        row = row.strip('[DReyeVR]')
+        t1 = row.split(':')    
+        row_header = t1[0]
+        row = ":".join(t1[1:])
+        # print(row_header)
+        row_elements = row.split(',')
+
+        if row_header=='TimestampCarla':
+            df.loc[frame, row_header] = float(row_elements[0])
+            pass
+
+        elif row_header=='EyeTracker':
+            df.loc[frame, row_elements[0].split(':')[0]] = float(row_elements[0].split(':')[1])
+            df.loc[frame, row_elements[1].split(':')[0]] = float(row_elements[1].split(':')[1])
+
+            #  re.findall("([A-Z]{2,})", row) returns ['COMBINED', 'LEFT', 'RIGHT']
+            gaze_struct_names = re.findall("([A-Z]{2,})", row)
+            # combined, left, right = re.findall("\{(.*?)\}", row) # returns the contents of the {}
+            gaze_structs = re.findall("\{(.*?)\}", row)
+
+            if COMBINED_GAZE_ONLY:
+                gaze_struct_colnames = re.findall("[A-Z][a-z]+(?:[A-Z][a-z]+)*", gaze_structs[0])
+                gaze_struct = gaze_structs[0]
+                gaze_struct_colnames = [x+"_"+gaze_struct_names[0] for x in gaze_struct_colnames]
+                gaze_elements = gaze_structs[0][:-1].split(',') # last one is empty so removing
+                for i, gaze_elem in enumerate(gaze_elements):
+                    gaze_measurement = gaze_elem.split(':')[1]
+                    try:
+                        gaze_measurement = float(gaze_measurement)
+                    except ValueError:
+                        pass
+                    df.loc[frame, gaze_struct_colnames[i]] = gaze_measurement
+            else:
+                raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
+            pass
+        elif row_header=='FocusInfo':
+            pass
+        elif row_header=='EgoVariables':
+            pass
+        elif row_header=='UserInputs':
+            for row_element in row_elements[:-2]:
+                colname, measurement = row_element.split(':')
+                try:
+                    measurement = float(measurement)
+                except ValueError:
+                    pass
+                df.loc[frame, colname] = measurement
+                
+    return df
+
 def read_periph_recording(path_to_recording : str) -> pd.DataFrame:
     lines = []
     with open(path_to_recording) as f:
@@ -58,6 +202,12 @@ def read_periph_recording(path_to_recording : str) -> pd.DataFrame:
                     df.loc[frame, col_name] = val.tolist()     
             
     return df
+
+
+def convert_XYZstr2array(xyz_str):
+    xyz_str = xyz_str.split(" ")
+    arr = [float(each.split("=")[1]) for each in xyz_str]
+    return np.array(arr)
 
 def GetGazeDeviationFromHead(gaze_x, gaze_y, gaze_z):
     # generates pitch and yaw angles of gaze ray from head direction
