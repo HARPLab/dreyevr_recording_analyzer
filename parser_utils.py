@@ -64,9 +64,15 @@ def get_colnames(data, COMBINED_GAZE_ONLY):
                 gaze_struct_colnames = re.findall("[A-Z][a-z]+(?:[A-Z][a-z]+)*", gaze_structs[0])
                 gaze_struct = gaze_structs[0]
                 gaze_struct_colnames = [x+"_"+gaze_struct_names[0] for x in gaze_struct_colnames]
+                col_names += gaze_struct_colnames
             else:
-                raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
-            col_names += gaze_struct_colnames
+                for gctr, gaze_struct in enumerate(gaze_structs):
+                    gaze_struct_colnames = re.findall("[A-Z][a-z]+(?:[A-Z][a-z]+)*", gaze_struct)
+                    gaze_struct = gaze_struct
+                    gaze_struct_colnames = [x+"_"+gaze_struct_names[gctr] for x in gaze_struct_colnames]
+                    col_names += gaze_struct_colnames
+                # raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
+            # col_names += gaze_struct_colnames
             pass
         elif row_header=='FocusInfo':
             pass
@@ -129,7 +135,18 @@ def parse_and_add_row(data_row, df : pd.DataFrame, COMBINED_GAZE_ONLY):
                         pass
                     df.loc[frame, gaze_struct_colnames[i]] = gaze_measurement
             else:
-                raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
+                for gsctr, gaze_struct in enumerate(gaze_structs):
+                    gaze_struct_colnames = re.findall("[A-Z][a-z]+(?:[A-Z][a-z]+)*", gaze_struct)
+                    gaze_struct_colnames = [x+"_"+gaze_struct_names[gsctr] for x in gaze_struct_colnames]
+                    gaze_elements = gaze_struct[:-1].split(',') # last one is empty so removing
+                    for i, gaze_elem in enumerate(gaze_elements):
+                        gaze_measurement = gaze_elem.split(':')[1]
+                        try:
+                            gaze_measurement = float(gaze_measurement)
+                        except ValueError:
+                            pass
+                        df.loc[frame, gaze_struct_colnames[i]] = gaze_measurement
+                # raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
             pass
         elif row_header=='FocusInfo':
             pass
