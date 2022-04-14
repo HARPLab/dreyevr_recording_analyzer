@@ -157,3 +157,5 @@ cython_debug/
 #.idea/
 
 
+parser/results/
+parser/__pycache__/
