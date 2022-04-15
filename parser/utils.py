@@ -1,3 +1,5 @@
+from os import lseek
+import re
 from typing import Callable, Dict, List, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
@@ -220,9 +222,34 @@ def convert_to_df(data: Dict[str, Any]) -> pd.DataFrame:
     start_t: float = time.time()
     data = convert_to_list(data)
     data = flatten_dict(data)
+    data = _rename_to_match_downstream(data)
     lens = [len(x) for x in data.values()]
     assert min(lens) == max(lens)  # all lengths are equal!
     # NOTE: pandas can't haneld high dimensional np arrays, so we just use lists
     df = pd.DataFrame.from_dict(data)
     print(f"created DReyeVR df in {time.time() - start_t:.3f}s")
     return df
+
+
+def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    if "CustomActor_t" in data:
+        return data  # do nothing
+    new_data: Dict[str, List[Any]] = {}
+    for k in data.keys():
+        new_key: str = k
+        if new_key == "TimestampCarla_data":
+            new_key = "TimeElapsed"
+        elif "EyeTracker_" in new_key:
+            new_key = new_key.replace("EyeTracker_", "")
+            groups: List[str] = ["COMBINED", "LEFT", "RIGHT"]
+            for g in groups:
+                if g in new_key:
+                    var_name = new_key.replace(g, "")
+                    new_key = f"{var_name}_{g}"
+        elif "PeriphData" in new_key:
+            new_key = new_key.replace("PeriphData_", "")
+        else:
+            pass  # no key in og df yet
+        new_data[new_key] = data[k]
+    assert len(new_data) == len(data)
+    return new_data
