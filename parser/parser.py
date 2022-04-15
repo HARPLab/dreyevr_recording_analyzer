@@ -1,6 +1,11 @@
 import os
 from typing import Dict, List, Any, Optional
 import time
+import sys
+
+# allow us to import from this current directory
+sys.path.insert(1, "/".join(__file__.split("/")[:-1]))
+
 from utils import (
     process_UE4_string_to_value,
     convert_to_np,
