@@ -1,5 +1,3 @@
-from os import lseek
-import re
 from typing import Callable, Dict, List, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
@@ -85,6 +83,74 @@ def convert_to_list(data: Dict[str, np.ndarray or dict]) -> Dict[str, list or di
     return list_data
 
 
+def normalize(arr: np.ndarray, axis=1) -> np.ndarray:
+    # normalize arr
+    arr = (arr.T / (np.linalg.norm(arr, axis=axis))).T
+    assert np.allclose(np.linalg.norm(arr, axis=axis), 1, 0.0001)
+    return arr
+
+
+def VectorFromRotator(arr: np.ndarray) -> np.ndarray:
+    # implementing FRotator::Vector()
+    n = len(arr)
+    assert arr.shape == (n, 3)
+    # note this FRotator holds degrees as (pitch, yaw, roll)
+    pitch: np.ndarray = arr[:, 0]
+    yaw: np.ndarray = arr[:, 1]
+    roll: np.ndarray = arr[:, 2]  # not needed
+    CP = np.cos(pitch)
+    SP = np.sin(pitch)
+    CY = np.cos(yaw)
+    SY = np.sin(yaw)
+    vec = np.array([CP * CY, CP * SY, SP])
+    assert vec.shape == (n, 3)
+    return vec
+
+
+def RotateVector(vec: np.ndarray, rot: np.ndarray) -> np.ndarray:
+    # implementing FRotator::RotateVector()
+    # https://docs.unrealengine.com/4.27/en-US/API/Runtime/Core/Math/FRotator/RotateVector/
+    n = len(vec)
+    assert vec.shape == (n, 3)
+    assert rot.shape == (n, 3)  # rotator is in degrees (pitch, yaw, roll)
+    # rotmat = np.zeros((n, 3, 3)) # creating rotation matrices
+    pitch: np.ndarray = rot[:, 0]
+    yaw: np.ndarray = rot[:, 1]
+    roll: np.ndarray = rot[:, 2]
+    CP = np.cos(pitch)
+    SP = np.sin(pitch)
+    CY = np.cos(yaw)
+    SY = np.sin(yaw)
+    CR = np.cos(roll)
+    SR = np.sin(roll)
+    ZERO = np.zeros(n)
+    ONE = np.ones(n)
+    # create the big rotation matrix for each rotator in rot from euler angles
+    # http://planning.cs.uiuc.edu/node102.html
+    yaw_rotmat = np.array(
+        [
+            [CY, -SY, ZERO],  # this is
+            [SY, CY, ZERO],  # the yaw (counterclockwise)
+            [ZERO, ZERO, ONE],  # rottation matrix
+        ]
+    ).reshape(n, 3, 3)
+    pitch_rotmat = np.array(
+        [
+            [CP, ZERO, SP],  # this is
+            [ZERO, ONE, ZERO],  # the pitch (counterclockwise)
+            [-SP, ZERO, CP],  # rottation matrix
+        ]
+    ).reshape(n, 3, 3)
+    roll_rotmat = np.array(
+        [[ONE, ZERO, ZERO], [ZERO, CR, -SR], [ZERO, SR, CR]]
+    ).reshape(n, 3, 3)
+    rotmat = np.matmul(yaw_rotmat, np.matmul(pitch_rotmat, roll_rotmat))
+    # apply the rotation matrices to the vector
+    rotated = np.array([np.matmul(rotmat[i], vec[i]) for i in range(n)])
+    assert rotated.shape == (n, 3)
+    return rotated
+
+
 def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray]]:
     # first determine if we have a legacy periph recording or not
     assert "UserInputs" in data
@@ -138,26 +204,23 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
             extrapolated_periphtarget_location.shape
             == data["EgoVariables"]["CameraLocAbs"].shape
         )
-        RotVecDirection: np.ndarray = (
+        RotVecDirection: np.ndarray = normalize(
             extrapolated_periphtarget_location - data["EgoVariables"]["CameraLocAbs"]
         )
 
-        # normalize RotVecDirection
-        RotVecDirection = (
-            RotVecDirection.T / np.linalg.norm(RotVecDirection, axis=1)
-        ).T
-        assert np.allclose(np.linalg.norm(RotVecDirection, axis=1), 1, 0.0001)
-
         # TODO: apply the same "RotateVector" transformation from CameraRotation to the gaze dir
-        GazeVec = data["EyeTracker"]["COMBINEDGazeDir"]
-        # TODO: normalize gaze vec
+        GazeDir = normalize(
+            RotateVector(
+                vec=data["EyeTracker"]["COMBINEDGazeDir"],
+                rot=data["EgoVariables"]["CameraRotAbs"],
+            )
+        )
 
-        gaze_p, gaze_y = get_angles(GazeVec, RotVecDirection)
+        gaze_p, gaze_y = get_angles(GazeDir, RotVecDirection)
         PeriphData["gaze2target_pitch"] = gaze_p
         PeriphData["gaze2target_yaw"] = gaze_y
 
-        HeadVec = data["EgoVariables"]["CameraRotAbs"]
-        # TODO: normalize head vec
+        HeadVec = normalize(VectorFromRotator(data["EgoVariables"]["CameraRotAbs"]))
 
         head_p, head_y = get_angles(HeadVec, RotVecDirection)
         PeriphData["head2target_pitch"] = head_p
