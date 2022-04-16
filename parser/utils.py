@@ -102,7 +102,7 @@ def VectorFromRotator(arr: np.ndarray) -> np.ndarray:
     SP = np.sin(pitch)
     CY = np.cos(yaw)
     SY = np.sin(yaw)
-    vec = np.array([CP * CY, CP * SY, SP])
+    vec = np.array([CP * CY, CP * SY, SP]).T
     assert vec.shape == (n, 3)
     return vec
 
@@ -133,17 +133,27 @@ def RotateVector(vec: np.ndarray, rot: np.ndarray) -> np.ndarray:
             [SY, CY, ZERO],  # the yaw (counterclockwise)
             [ZERO, ZERO, ONE],  # rottation matrix
         ]
-    ).reshape(n, 3, 3)
+    )
+    yaw_rotmat = np.moveaxis(yaw_rotmat, 2, 0)
+    assert yaw_rotmat.shape == (n, 3, 3)
     pitch_rotmat = np.array(
         [
             [CP, ZERO, SP],  # this is
             [ZERO, ONE, ZERO],  # the pitch (counterclockwise)
-            [-SP, ZERO, CP],  # rottation matrix
+            [-SP, ZERO, CP],  # rotation matrix
         ]
-    ).reshape(n, 3, 3)
+    )
+    pitch_rotmat = np.moveaxis(pitch_rotmat, 2, 0)
+    assert pitch_rotmat.shape == (n, 3, 3)
     roll_rotmat = np.array(
-        [[ONE, ZERO, ZERO], [ZERO, CR, -SR], [ZERO, SR, CR]]
-    ).reshape(n, 3, 3)
+        [
+            [ONE, ZERO, ZERO],  # this is
+            [ZERO, CR, -SR],  # the roll (counterclockwise)
+            [ZERO, SR, CR],  # rotation matrix
+        ]
+    )
+    roll_rotmat = np.moveaxis(roll_rotmat, 2, 0)
+    assert roll_rotmat.shape == (n, 3, 3)
     rotmat = np.matmul(yaw_rotmat, np.matmul(pitch_rotmat, roll_rotmat))
     # apply the rotation matrices to the vector
     rotated = np.array([np.matmul(rotmat[i], vec[i]) for i in range(n)])
@@ -208,7 +218,6 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
             extrapolated_periphtarget_location - data["EgoVariables"]["CameraLocAbs"]
         )
 
-        # TODO: apply the same "RotateVector" transformation from CameraRotation to the gaze dir
         GazeDir = normalize(
             RotateVector(
                 vec=data["EyeTracker"]["COMBINEDGazeDir"],
