@@ -4,6 +4,23 @@ import pandas as pd
 import time
 
 
+def get_filename_from_path(path: str) -> str:
+    # TODO: use something more platform independent?
+    delim: str = "/" if "/" in path else "\\"  # windows uses \ for paths
+    actual_name: str = path.split(delim)[-1].replace(".txt", "")
+    return actual_name
+
+
+def extend_data(data: Dict[str, Any], new_data: Dict[str, Any]) -> Dict[str, Any]:
+    for k in new_data.keys():
+        assert k in data
+        if isinstance(new_data[k], dict):
+            data[k] = extend_data(data[k], new_data[k])
+        else:
+            data[k].extend(new_data[k])
+    return data
+
+
 def get_good_idxs(arr: np.ndarray, criteria: Callable[[Any], bool]) -> np.ndarray:
     good_idxs = np.where(criteria(arr) == True)
     return good_idxs
