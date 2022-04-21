@@ -71,6 +71,8 @@ def parse_row(
             if key not in working_map:
                 working_map[key] = []
             working_map[key].append(value)
+        else:
+            raise NotImplementedError
 
 
 def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
@@ -94,7 +96,7 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
 
 
 def parse_file(
-    path: str, force_reload: Optional[bool] = False
+    path: str, force_reload: Optional[bool] = False, debug: Optional[bool] = False
 ) -> Dict[str, np.ndarray or dict]:
     if force_reload is False:
         """try to load cached data"""
@@ -114,7 +116,7 @@ def parse_file(
     DReyeVR_core: str = "[DReyeVR]"
     DReyeVR_CA: str = "[DReyeVR_CA]"
 
-    with open(path) as f:
+    with open(path, "r") as f:
         start_t: float = time.time()
         for i, line in enumerate(f.readlines()):
             # remove leading spaces
@@ -123,14 +125,16 @@ def parse_file(
             if line[: len(DReyeVR_core)] == DReyeVR_core:
                 data_line: str = line.strip(DReyeVR_core).strip("\n")
                 parse_row(data, data_line)
-                validate(data)
+                if debug:
+                    validate(data)
 
             # checking the line(s) for DReyeVR custom actor data
             elif line[: len(DReyeVR_CA)] == DReyeVR_CA:
                 data_line: str = line.strip(DReyeVR_CA).strip("\n")
                 t = data["TimestampCarla"][_no_title_key][-1]  # get carla time
                 parse_row(data, data_line, title="CustomActor", t=t)
-                validate(data)
+                if debug:
+                    validate(data)
 
             # print status
             if i % 500 == 0:
