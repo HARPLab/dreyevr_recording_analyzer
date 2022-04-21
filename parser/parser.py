@@ -2,9 +2,11 @@ import os
 from typing import Dict, List, Any, Optional
 import time
 import sys
+import pickle
 
 # allow us to import from this current directory
-sys.path.insert(1, "/".join(__file__.split("/")[:-1]))
+parser_dir: str = "/".join(__file__.split("/")[:-1])
+sys.path.insert(1, parser_dir)
 
 from utils import (
     process_UE4_string_to_value,
@@ -14,6 +16,8 @@ import numpy as np
 
 # used as the dictionary key when the data has no explicit title (ie. included as raw array)
 _no_title_key: str = "data"
+cache_dir: str = os.path.join(parser_dir, "cache")
+os.makedirs(cache_dir, exist_ok=True)
 
 
 def parse_row(
@@ -89,7 +93,15 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
         assert min(CA_lens) == max(CA_lens)  # all same lens
 
 
-def parse_file(path: str) -> Dict[str, np.ndarray or dict]:
+def parse_file(
+    path: str, force_reload: Optional[bool] = False
+) -> Dict[str, np.ndarray or dict]:
+    if force_reload is False:
+        """try to load cached data"""
+        data = try_load_data(path)
+        if data is not None:
+            return data
+
     # this function reads in a DReyeVR recording file and parses every line to return
     # a dictionary following the parser structure depending on the group types
 
@@ -130,4 +142,27 @@ def parse_file(path: str) -> Dict[str, np.ndarray or dict]:
 
     # TODO: do everything in np from the get-go rather than convert at the end
     data = convert_to_np(data)
+    cache_data(data, path)
     return data
+
+
+def try_load_data(filename: str) -> Optional[Dict[str, Any]]:
+    actual_name = filename.split("/")[-1].replace(".txt", "")
+    filename = f"{os.path.join(cache_dir, actual_name)}.pkl"
+    data = None
+    if os.path.exists(filename):
+        with open(filename, "rb") as f:
+            data = pickle.load(f)
+        print(f"Loaded data from {filename}")
+    else:
+        print(f"Did not find data at {filename}")
+    return data
+
+
+def cache_data(data: Dict[str, Any], filename: str) -> None:
+    actual_name: str = filename.split("/")[-1].replace(".txt", "")
+    os.makedirs(cache_dir, exist_ok=True)
+    filename = f"{os.path.join(cache_dir, actual_name)}.pkl"
+    with open(filename, "wb") as filehandler:
+        pickle.dump(data, filehandler)
+    print(f"cached data to {filename}")

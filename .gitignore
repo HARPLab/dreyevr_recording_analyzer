@@ -159,3 +159,4 @@ cython_debug/
 
 parser/results/
 parser/__pycache__/
+parser/cache/
