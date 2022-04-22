@@ -358,6 +358,8 @@ def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.nda
             new_key = new_key.replace("PeriphData_", "")
         elif "UserInputs" in new_key:
             new_key = new_key.replace("UserInputs_", "")
+        elif "EgoVariables" in new_key:
+            new_key = new_key.replace("EgoVariables_", "")
         else:
             pass  # no key in og df yet
         new_data[new_key] = data[k]
