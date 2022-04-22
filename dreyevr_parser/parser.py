@@ -12,6 +12,7 @@ from utils import (
     process_UE4_string_to_value,
     convert_to_np,
     convert_standalone_dict_to_list,
+    get_filename_from_path,
 )
 import numpy as np
 
@@ -97,7 +98,7 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
 
 
 def parse_file(
-    path: str, force_reload: Optional[bool] = False, debug: Optional[bool] = True
+    path: str, force_reload: Optional[bool] = False, debug: Optional[bool] = False
 ) -> Dict[str, np.ndarray or dict]:
     if force_reload is False:
         """try to load cached data"""
@@ -164,7 +165,7 @@ def parse_file(
 
 
 def try_load_data(filename: str) -> Optional[Dict[str, Any]]:
-    actual_name = filename.split("/")[-1].replace(".txt", "")
+    actual_name: str = get_filename_from_path(filename)
     filename = f"{os.path.join(cache_dir, actual_name)}.pkl"
     data = None
     if os.path.exists(filename):
@@ -177,7 +178,7 @@ def try_load_data(filename: str) -> Optional[Dict[str, Any]]:
 
 
 def cache_data(data: Dict[str, Any], filename: str) -> None:
-    actual_name: str = filename.split("/")[-1].replace(".txt", "")
+    actual_name: str = get_filename_from_path(filename)
     os.makedirs(cache_dir, exist_ok=True)
     filename = f"{os.path.join(cache_dir, actual_name)}.pkl"
     with open(filename, "wb") as filehandler:

@@ -3,6 +3,14 @@ import numpy as np
 import pandas as pd
 import time
 
+def get_filename_from_path(path: str) -> str:
+    # TODO: use something more platform independent?
+    delim: str = "/" if "/" in path else "\\"  # windows uses \ for paths
+
+    # actual_name: str = path.split(delim)[-1].replace(".txt", "")
+    final_chunk_name = path.split(delim)[-1]
+    actual_name = final_chunk_name[:final_chunk_name.find(".")]
+    return actual_name
 
 def get_good_idxs(arr: np.ndarray, criteria: Callable[[Any], bool]) -> np.ndarray:
     good_idxs = np.where(criteria(arr) == True)
