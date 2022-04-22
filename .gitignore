@@ -1,6 +1,7 @@
 # recording files
 *.txt
 temp_data/
+cache/
 data/
 
 # Byte-compiled / optimized / DLL files
