@@ -72,6 +72,25 @@ def convert_to_np(data: Dict[str, Any]) -> Dict[str, np.ndarray or dict]:
     return np_data
 
 
+def convert_standalone_dict_to_list(
+    data: Dict[str, Any], standalone_key: str
+) -> Dict[str, Any]:
+    # converts a "standalone" dictionary as follows:
+    # if dict == {standalone_key : array} converts to list(array) for simplicity
+    clean_data = {}
+    for k in data.keys():
+        if k == standalone_key:
+            # should only happen with raw array data (ex. TimestampCarla)
+            assert len(data) == 1
+            return list(data[k])
+        else:
+            if isinstance(data[k], dict):
+                clean_data[k] = convert_standalone_dict_to_list(data[k], standalone_key)
+            else:
+                clean_data[k] = data[k]
+    return clean_data
+
+
 def convert_to_list(data: Dict[str, np.ndarray or dict]) -> Dict[str, list or dict]:
     list_data = {}
     for k in data.keys():

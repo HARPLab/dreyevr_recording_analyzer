@@ -11,11 +11,12 @@ sys.path.insert(1, parser_dir)
 from utils import (
     process_UE4_string_to_value,
     convert_to_np,
+    convert_standalone_dict_to_list,
 )
 import numpy as np
 
 # used as the dictionary key when the data has no explicit title (ie. included as raw array)
-_no_title_key: str = "data"
+_no_title_key: str = "data_single"  # data with this key will be converted to a raw list
 cache_dir: str = os.path.join(parser_dir, "cache")
 os.makedirs(cache_dir, exist_ok=True)
 
@@ -96,7 +97,7 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
 
 
 def parse_file(
-    path: str, force_reload: Optional[bool] = False, debug: Optional[bool] = False
+    path: str, force_reload: Optional[bool] = False, debug: Optional[bool] = True
 ) -> Dict[str, np.ndarray or dict]:
     if force_reload is False:
         """try to load cached data"""
@@ -127,7 +128,7 @@ def parse_file(
             # get wall-clock time elapsed
             if line[: len(TimeElapsed)] == TimeElapsed:
                 # line is always in the form "Frame X at Y seconds\n"
-                line_data = line[line.find("at")+3 :].replace(" seconds\n", "")
+                line_data = line[line.find("at") + 3 :].replace(" seconds\n", "")
                 data["TimeElapsed"].append(float(line_data))
 
             # checking the line(s) for core DReyeVR data
@@ -153,6 +154,8 @@ def parse_file(
 
     n: int = len(data["TimeElapsed"])
     print(f"successfully read {n} frames in {time.time() - start_t:.3f}s")
+
+    data = convert_standalone_dict_to_list(data, _no_title_key)
 
     # TODO: do everything in np from the get-go rather than convert at the end
     data = convert_to_np(data)

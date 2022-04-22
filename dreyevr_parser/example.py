@@ -41,7 +41,8 @@ if __name__ == "__main__":
     # data_groups = split_along_subgroup(data, ["CustomActor"])
     # data_groups_df: List[pd.DataFrame] = [convert_to_df(x) for x in data_groups]
 
-    t: np.ndarray = data["TimestampCarla"]["data"]
+    # can also use data["TimestampCarla"] which is in simulator time
+    t: np.ndarray = data["TimeElapsed"]
 
     """visualize some interesting data!"""
     pupil_L = data["EyeTracker"]["LEFTPupilDiameter"]
