@@ -51,8 +51,6 @@ def get_colnames(data, COMBINED_GAZE_ONLY):
 
         if row_header=='TimestampCarla':
             col_names.append(row_header)
-            pass
-
         elif row_header=='EyeTracker':
             col_names.append(row_elements[0].split(':')[0])
             col_names.append(row_elements[1].split(':')[0])                       
@@ -73,18 +71,19 @@ def get_colnames(data, COMBINED_GAZE_ONLY):
                     col_names += gaze_struct_colnames
                 # raise NotImplementedError("have to implement parsing all 3 gaze values. only COMBINED available")
             # col_names += gaze_struct_colnames
-            pass
         elif row_header=='FocusInfo':
             pass
         elif row_header=='EgoVariables':
-            pass
+            for row_element in row_elements:
+                if row_element == '':
+                    continue
+                col_names.append(row_element.split(':')[0])            
         elif row_header=='UserInputs':
             for row_element in row_elements:
                 if row_element == '':
                     continue
                 col_names.append(row_element.split(':')[0])
             break
-            pass
         else:
             # Frame framenum at timestamp seconds
             col_names.append('FrameNum')
@@ -151,7 +150,20 @@ def parse_and_add_row(data_row, df : pd.DataFrame, COMBINED_GAZE_ONLY):
         elif row_header=='FocusInfo':
             pass
         elif row_header=='EgoVariables':
-            pass
+            for row_element in row_elements[:-2]:
+                colname, measurement = row_element.split(':')
+                if colname=='VehicleVel':
+                    measurement = float(measurement)
+                elif 'Loc' in colname:
+                    vals = re.findall("[-]?\d+[.]?\d*[e]?[-]?\d*", measurement)
+                    df.loc[frame, colname] = np.array([vals[0], vals[1], vals[2]]).astype(float)
+                elif 'Rot' in colname:
+                    vals = re.findall("[-]?\d+[.]?\d*[e]?[-]?\d*", measurement)
+                    df.loc[frame, colname] = np.array([vals[0], vals[1], vals[2]]).astype(float)
+            # except ValueError:
+            #     print(colname, measurement)
+            #     raise
+            df.loc[frame, colname] = measurement
         elif row_header=='UserInputs':
             for row_element in row_elements[:-2]:
                 colname, measurement = row_element.split(':')
@@ -233,3 +245,11 @@ def GetGazeDeviationFromHead(gaze_x, gaze_y, gaze_z):
     pitch = np.arctan2(gaze_z, gaze_x)
     
     return yaw*180/np.pi, pitch*180/np.pi
+
+# def GetGazeDeviationFromHead(gaze_xyz):
+#     # generates pitch and yaw angles of gaze ray from head direction
+#     # head direction is (1,0,0)
+#     yaw = np.arctan2(gaze_y, gaze_x)
+#     pitch = np.arctan2(gaze_z, gaze_x)
+    
+#     return yaw*180/np.pi, pitch*180/np.pi
