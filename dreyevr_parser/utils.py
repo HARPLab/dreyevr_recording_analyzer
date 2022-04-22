@@ -320,9 +320,7 @@ def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.nda
     new_data: Dict[str, List[Any]] = {}
     for k in data.keys():
         new_key: str = k
-        if new_key == "TimestampCarla_data":
-            new_key = "TimeElapsed"
-        elif "EyeTracker_" in new_key:
+        if "EyeTracker_" in new_key:
             new_key = new_key.replace("EyeTracker_", "")
             groups: List[str] = ["COMBINED", "LEFT", "RIGHT"]
             for g in groups:
@@ -331,6 +329,8 @@ def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.nda
                     new_key = f"{var_name}_{g}"
         elif "PeriphData" in new_key:
             new_key = new_key.replace("PeriphData_", "")
+        elif "UserInputs" in new_key:
+            new_key = new_key.replace("UserInputs_", "")
         else:
             pass  # no key in og df yet
         new_data[new_key] = data[k]

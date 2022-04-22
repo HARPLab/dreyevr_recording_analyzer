@@ -158,6 +158,6 @@ cython_debug/
 #.idea/
 
 
-parser/results/
-parser/__pycache__/
-parser/cache/
+dreyevr_parser/results/
+dreyevr_parser/__pycache__/
+dreyevr_parser/cache/

@@ -78,7 +78,7 @@ def parse_row(
 def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
     # verify the data structure is reasonable
     if L is None:
-        L: int = len(data["TimestampCarla"][_no_title_key])
+        L: int = len(data["TimeElapsed"])
     for k in data.keys():
         if k == "CustomActor":
             continue
@@ -111,8 +111,10 @@ def parse_file(
     print(f"Reading DReyeVR recording file: {path}")
 
     data: Dict[str, List[Any]] = {}
+    data["TimeElapsed"] = []
 
     # these are the group types we are using for now
+    TimeElapsed: str = "Frame "
     DReyeVR_core: str = "[DReyeVR]"
     DReyeVR_CA: str = "[DReyeVR_CA]"
 
@@ -121,8 +123,15 @@ def parse_file(
         for i, line in enumerate(f.readlines()):
             # remove leading spaces
             line = line.strip(" ")
+
+            # get wall-clock time elapsed
+            if line[: len(TimeElapsed)] == TimeElapsed:
+                # line is always in the form "Frame X at Y seconds\n"
+                line_data = line[line.find("at")+3 :].replace(" seconds\n", "")
+                data["TimeElapsed"].append(float(line_data))
+
             # checking the line(s) for core DReyeVR data
-            if line[: len(DReyeVR_core)] == DReyeVR_core:
+            elif line[: len(DReyeVR_core)] == DReyeVR_core:
                 data_line: str = line.strip(DReyeVR_core).strip("\n")
                 parse_row(data, data_line)
                 if debug:
@@ -131,6 +140,7 @@ def parse_file(
             # checking the line(s) for DReyeVR custom actor data
             elif line[: len(DReyeVR_CA)] == DReyeVR_CA:
                 data_line: str = line.strip(DReyeVR_CA).strip("\n")
+                # can also use TimeElapsed here instead, but TimestampCarla is simulator based
                 t = data["TimestampCarla"][_no_title_key][-1]  # get carla time
                 parse_row(data, data_line, title="CustomActor", t=t)
                 if debug:
@@ -141,7 +151,7 @@ def parse_file(
                 t: float = time.time() - start_t
                 print(f"Lines read: {i} @ {t:.3f}s", end="\r", flush=True)
 
-    n: int = len(data["TimestampCarla"][_no_title_key])
+    n: int = len(data["TimeElapsed"])
     print(f"successfully read {n} frames in {time.time() - start_t:.3f}s")
 
     # TODO: do everything in np from the get-go rather than convert at the end
