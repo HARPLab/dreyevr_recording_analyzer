@@ -1,6 +1,7 @@
 # recording files
 *.txt
 temp_data/
+cache/
 data/
 
 # Byte-compiled / optimized / DLL files
@@ -157,3 +158,6 @@ cython_debug/
 #.idea/
 
 
+dreyevr_parser/results/
+dreyevr_parser/__pycache__/
+dreyevr_parser/cache/
