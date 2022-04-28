@@ -9,7 +9,7 @@ def get_filename_from_path(path: str) -> str:
 
     # actual_name: str = path.split(delim)[-1].replace(".txt", "")
     final_chunk_name = path.split(delim)[-1]
-    actual_name = final_chunk_name[:final_chunk_name.find(".")]
+    actual_name = final_chunk_name[: final_chunk_name.find(".")]
     return actual_name
 
 def get_good_idxs(arr: np.ndarray, criteria: Callable[[Any], bool]) -> np.ndarray:
@@ -211,13 +211,13 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
         PeriphData: Dict[str, Any] = {}
 
         # need to only extract the Custom Actor data when it is a PeriphTarget
-        t = len(data["TimestampCarla"]["data"])  # all the frames
+        t = len(data["TimestampCarla"])  # all the frames
         Visibility: np.ndarray = np.zeros(t, dtype=np.int32)
         PeriphOnlyDataIdxs: List[int] = []
         for i, CA_t in enumerate(data["CustomActor"]["t"]):
             if data["CustomActor"]["Name"][i] == "PeriphTarget":
                 # t = data["CustomActor"]["t"][i]
-                idx = np.searchsorted(data["TimestampCarla"]["data"], CA_t)
+                idx = np.searchsorted(data["TimestampCarla"], CA_t)
                 Visibility[idx] = 1  # effectively same as "LightOn"
                 PeriphOnlyDataIdxs.append(i)
 

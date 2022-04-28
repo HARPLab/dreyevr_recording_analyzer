@@ -115,7 +115,7 @@ class EyeClassifier:
     
     @staticmethod
     def _fit(model, data):
-        model.fit(data.loc[np.logical_not(pd.isnull(data['velocity'])), 'velocity'].values.reshape(-1,1))
+        model.fit(data.loc[np.logical_not(np.isnan(data['velocity'])), 'velocity'].values.reshape(-1,1))
         
     def fit(self, eyes=None, world=None):
         """
@@ -149,7 +149,7 @@ class EyeClassifier:
     @staticmethod
     def _predict(model, model_labels, data):
         labels = np.ones(len(data), dtype=np.int8)*EyeClassifier.LABEL_NOISE
-        valid_mask = np.logical_not(pd.isnull(data['velocity']))
+        valid_mask = np.logical_not(np.isnan(data['velocity']))
         if np.any(valid_mask):
             labels[valid_mask] = model_labels[model.predict(data.loc[valid_mask, 'velocity'].values.reshape(-1,1))]
         return labels
@@ -289,6 +289,7 @@ class EyeClassifier:
                 data_to_fuse.append(pd.DataFrame({'timestamp': eyes[1].timestamp, 'label': labels1, 'source': 'eye1'}))
 
         if world is not None:
+            print("self.world_model.means_",self.world_model.means_)
             labelsw = EyeClassifier._predict(self.world_model, self.world_labels, world)
             labelsw = EyeClassifier.postprocess(labelsw)
             data_to_fuse.append(pd.DataFrame({'timestamp': world.timestamp, 'label': labelsw, 'source': 'world'}))
@@ -299,7 +300,7 @@ class EyeClassifier:
             return data_to_fuse
         
     @staticmethod
-    def get_fixations_from_labels(labels, gaze_data=None, min_fix_dur=100, max_fix_dur=1000):
+    def get_fixations_from_labels(labels, gaze_data=None, min_fix_dur=100):
         """
         Convert a sequence of labels into detected fixations.
         
@@ -307,7 +308,177 @@ class EyeClassifier:
         labels -- pandas-style dataframe with columns 'timestamp', 'label', as in supplied by EyeClassifier.fuse
         gaze_data -- Pandas-style dataframe with columns 'timestamp', 'x', 'y', or None. Fills out fixation 'x', 'y' if provided
         min_fix_dur -- minimum fixation duration to filter out (in ms), or None if no filtering is to be done
-        max_fix_dur -- maximum fixation duration to divide into; fixations longer than this will be split into multiple fixations
+        
+        Returns:
+        pandas dataframe of all detected fixations with columns 'start_timestamp', 'duration' (in ms). If gaze_data is provided, also
+        includes columns 'x', 'y', which are the mean of the values of gaze_data.x and gaze_data.y for the duration of the fixation
+        """
+
+        # Fixations are periods of either "fixation" or "noise" that start and end with a fixation label
+        # possibly there should be a limit to the amount of noise allowed within a fixation?
+#         is_fix = np.logical_or(labels.label.values == EyeClassifier.LABEL_FIX,
+#                                 labels.label.values == EyeClassifier.LABEL_NOISE).astype(np.int8)
+        if len(labels) < 2:
+            return pd.DataFrame([], columns=['start_timestamp', 'duration']), []
+
+        is_fix = (labels.label.values == EyeClassifier.LABEL_FIX).astype(np.int8)
+        fix_change = is_fix[1:] - is_fix[:-1]
+
+        fix_start = np.flatnonzero(fix_change == 1) + 1
+        fix_end = np.flatnonzero(fix_change == -1)
+        if is_fix[0]:
+            if is_fix[1]:
+                # if there's a length-2 to start, make sure to mark it
+                fix_start = np.concatenate( ([0], fix_start) )
+            else:
+                # if it's just length 1, remove it
+                fix_end = fix_end[1:]
+        if is_fix[-1]:
+            if is_fix[-2]:
+                fix_end = np.concatenate( (fix_end, [is_fix.size-1]))
+            else:
+                fix_start = fix_start[:-1]
+
+        # Shrink fixation start and end periods to reject noise at the edges
+#         def get_offset_idx(st,nd):
+#             nse_idx = np.flatnonzero( labels.label.values[st:nd] != EyeClassifier.LABEL_NOISE )
+#             if nse_idx.size > 0:
+#                 return nse_idx[ [0,-1] ]
+#             else:
+#                 return [ nd-st, nd-st ]
+#         noise_offsets = np.array([ get_offset_idx(st,nd) for st,nd in zip(fix_start, fix_end) ])
+#         fix_end -= fix_end - fix_start - noise_offsets[:,1]
+#         fix_start += noise_offsets[:,0]
+        # now make sure we didn't overshoot (possible only if a "fixation" is entirely noise"
+        ok_idx = fix_start < fix_end
+        fix_start = fix_start[ok_idx]
+        fix_end = fix_end[ok_idx]
+        
+        fix = pd.DataFrame( np.column_stack((labels.timestamp.values[fix_start], 
+                            (labels.timestamp.values[fix_end] - labels.timestamp.values[fix_start])* 1000.)), 
+                           columns=['start_timestamp', 'duration'])
+
+        #Filter out too-short fixations
+        if min_fix_dur is not None:
+            fix = fix.loc[fix.duration >= min_fix_dur, :]
+            fix.index = np.arange(len(fix))
+        if gaze_data is not None:
+            gaze_raw = [gaze_data.loc[np.logical_and(gaze_data.timestamp.values >= r.start_timestamp,
+                                                                       gaze_data.timestamp.values <= r.start_timestamp + .001*r.duration), ['timestamp', 'confidence', 'x','y']]
+                        for r in fix.itertuples()]
+            m_x = [ np.mean( raw.x ) for raw in gaze_raw ]
+            m_y = [ np.mean( raw.y ) for raw in gaze_raw ]
+            fix = fix.assign(x=m_x, y=m_y)
+        else:
+            gaze_raw = [pd.DataFrame()] * len(fix)
+        fix.index.name = 'id'
+        return fix, gaze_raw
+    
+    def get_fixations(self, eyes=None, world=None, ts=None, dt=None, gaze_data=None, min_fix_dur=100):
+        if ts is None and dt is None and gaze_data is not None:
+            ts = gaze_data.timestamp.values
+        labels, _ = self.predict(eyes=eyes, world=world, ts=ts, dt=dt)
+        return EyeClassifier.get_fixations_from_labels(labels, gaze_data, min_fix_dur)
+
+    @staticmethod
+    def get_saccades_from_labels(labels, gaze_data=None, min_sac_dur=1):
+        """
+        Convert a sequence of labels into detected saccades.
+        
+        Arguments:
+        labels -- pandas-style dataframe with columns 'timestamp', 'label', as in supplied by EyeClassifier.fuse
+        gaze_data -- Pandas-style dataframe with columns 'timestamp', 'x', 'y', or None. Fills out fixation 'x', 'y' if provided
+        min_fix_dur -- minimum fixation duration to filter out (in ms), or None if no filtering is to be done
+        
+        Returns:
+        pandas dataframe of all detected fixations with columns 'start_timestamp', 'duration' (in ms). If gaze_data is provided, also
+        includes columns 'x', 'y', which are the mean of the values of gaze_data.x and gaze_data.y for the duration of the fixation
+        """
+
+        # Fixations are periods of either "fixation" or "noise" that start and end with a fixation label
+        # possibly there should be a limit to the amount of noise allowed within a fixation?
+#         is_fix = np.logical_or(labels.label.values == EyeClassifier.LABEL_FIX,
+#                                 labels.label.values == EyeClassifier.LABEL_NOISE).astype(np.int8)
+        if len(labels) < 2:
+            return pd.DataFrame([], columns=['start_timestamp', 'duration']), []
+
+        is_sac = (labels.label.values == EyeClassifier.LABEL_SAC).astype(np.int8)
+        sac_change = is_sac[1:] - is_sac[:-1]
+        print("is_sac: ",is_sac)
+        print("sac_change: ",sac_change)
+
+        sac_start = np.flatnonzero(sac_change == 1) + 1
+        sac_end = np.flatnonzero(sac_change == -1)
+        print("sac_start: ",sac_start)
+        print("sac_end: ",sac_end)
+        if is_sac[0]:
+            if is_sac[1]:
+                # if there's a length-2 to start, make sure to mark it
+                sac_start = np.concatenate( ([0], sac_start) )
+            #else:
+                # if it's just length 1, remove it
+                #sac_end = sac_end[1:]
+        if is_sac[-1]:
+            if is_sac[-2]:
+                sac_end = np.concatenate( (sac_end, [is_sac.size-1]))
+            else:
+                sac_start = sac_start[:-1]
+
+        # Shrink fixation start and end periods to reject noise at the edges
+#         def get_offset_idx(st,nd):
+#             nse_idx = np.flatnonzero( labels.label.values[st:nd] != EyeClassifier.LABEL_NOISE )
+#             if nse_idx.size > 0:
+#                 return nse_idx[ [0,-1] ]
+#             else:
+#                 return [ nd-st, nd-st ]
+#         noise_offsets = np.array([ get_offset_idx(st,nd) for st,nd in zip(fix_start, fix_end) ])
+#         fix_end -= fix_end - fix_start - noise_offsets[:,1]
+#         fix_start += noise_offsets[:,0]
+        # now make sure we didn't overshoot (possible only if a "fixation" is entirely noise"
+        '''
+        ok_idx = sac_start < sac_end
+        sac_start = sac_start[ok_idx]
+        sac_end = sac_end[ok_idx]
+        print("sac_start[ok_idx]: ",sac_start)
+        print("sac_end[ok_idx]: ",sac_end)
+        '''
+        
+        sac = pd.DataFrame( np.column_stack((labels.timestamp.values[sac_start], 
+                            (labels.timestamp.values[sac_end] - labels.timestamp.values[sac_start])* 1000.)), 
+                           columns=['start_timestamp', 'duration'])
+
+        #Filter out too-short fixations
+        if min_sac_dur is not None:
+            sac = sac.loc[sac.duration >= min_sac_dur, :]
+            sac.index = np.arange(len(sac))
+        if gaze_data is not None:
+            gaze_raw = [gaze_data.loc[np.logical_and(gaze_data.timestamp.values >= r.start_timestamp,
+                                                                       gaze_data.timestamp.values <= r.start_timestamp + .001*r.duration), ['timestamp', 'confidence', 'x','y']]
+                        for r in sac.itertuples()]
+            m_x = [ np.mean( raw.x ) for raw in gaze_raw ]
+            m_y = [ np.mean( raw.y ) for raw in gaze_raw ]
+            sac = sac.assign(x=m_x, y=m_y)
+        else:
+            gaze_raw = [pd.DataFrame()] * len(sac)
+        sac.index.name = 'id'
+        return sac, gaze_raw
+    
+    def get_saccades(self, eyes=None, world=None, ts=None, dt=None, gaze_data=None, min_sac_dur=1):
+        if ts is None and dt is None and gaze_data is not None:
+            ts = gaze_data.timestamp.values
+        labels, _ = self.predict(eyes=eyes, world=world, ts=ts, dt=dt)
+        return EyeClassifier.get_saccades_from_labels(labels, gaze_data, min_sac_dur)
+
+
+    @staticmethod
+    def get_short_fixations_from_labels(labels, gaze_data=None, max_fix_dur=100):
+        """
+        Convert a sequence of labels into detected fixations.
+        
+        Arguments:
+        labels -- pandas-style dataframe with columns 'timestamp', 'label', as in supplied by EyeClassifier.fuse
+        gaze_data -- Pandas-style dataframe with columns 'timestamp', 'x', 'y', or None. Fills out fixation 'x', 'y' if provided
+        min_fix_dur -- minimum fixation duration to filter out (in ms), or None if no filtering is to be done
         
         Returns:
         pandas dataframe of all detected fixations with columns 'start_timestamp', 'duration' (in ms). If gaze_data is provided, also
@@ -360,17 +531,8 @@ class EyeClassifier:
 
         #Filter out too-short fixations
         if max_fix_dur is not None:
-            fix_adj = []
-            for f in fix.itertuples(index=False):
-                while f.duration > max_fix_dur:
-                    fix_adj.append(f._replace(duration=max_fix_dur))
-                    f = f._replace(start_timestamp=f.start_timestamp+max_fix_dur*1e-3, duration=f.duration-max_fix_dur)
-                fix_adj.append(f)
-            fix = pd.DataFrame(fix_adj, columns=fix.columns)
-        if min_fix_dur is not None:
-            fix = fix.loc[fix.duration >= min_fix_dur, :]
+            fix = fix.loc[fix.duration < max_fix_dur, :]
             fix.index = np.arange(len(fix))
-
         if gaze_data is not None:
             gaze_raw = [gaze_data.loc[np.logical_and(gaze_data.timestamp.values >= r.start_timestamp,
                                                                        gaze_data.timestamp.values <= r.start_timestamp + .001*r.duration), ['timestamp', 'confidence', 'x','y']]
@@ -383,11 +545,11 @@ class EyeClassifier:
         fix.index.name = 'id'
         return fix, gaze_raw
     
-    def get_fixations(self, eyes=None, world=None, ts=None, dt=None, gaze_data=None, min_fix_dur=100, max_fix_dur=1000):
+    def get_short_fixations(self, eyes=None, world=None, ts=None, dt=None, gaze_data=None, max_fix_dur=100):
         if ts is None and dt is None and gaze_data is not None:
             ts = gaze_data.timestamp.values
         labels, _ = self.predict(eyes=eyes, world=world, ts=ts, dt=dt)
-        return EyeClassifier.get_fixations_from_labels(labels, gaze_data, min_fix_dur, max_fix_dur)
+        return EyeClassifier.get_short_fixations_from_labels(labels, gaze_data, max_fix_dur)
             
         
         
