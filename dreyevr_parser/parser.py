@@ -149,7 +149,7 @@ def parse_file(
                     validate(data)
 
             # print status
-            if i % 500 == 0:
+            if i % 5000 == 0:
                 t: float = time.time() - start_t
                 print(f"Lines read: {i} @ {t:.3f}s", end="\r", flush=True)
 

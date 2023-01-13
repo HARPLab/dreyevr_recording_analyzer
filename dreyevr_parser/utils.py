@@ -209,7 +209,7 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
         # using legacy periph, extract them from UserInputs
         PeriphData = {k: data["UserInputs"].pop(k) for k in periph_keys}
     elif "CustomActor" in data and "PeriphTarget" in data["CustomActor"]["Name"]:
-        # using modern periph system, extract from implicit representation
+        # using updated periph system, extract from implicit representation
         PeriphData: Dict[str, Any] = {}
 
         # need to only extract the Custom Actor data when it is a PeriphTarget
@@ -302,6 +302,12 @@ def get_angles(dir1: np.ndarray, dir2: np.ndarray) -> Tuple[np.ndarray, np.ndarr
     dir2_x0 = dir2[:, 0]
     dir2_y0 = dir2[:, 1]
     dir2_z0 = dir2[:, 2]
+    # dir1_x0 = dir1[0]
+    # dir1_y0 = dir1[1]
+    # dir1_z0 = dir1[2]
+    # dir2_x0 = dir2[0]
+    # dir2_y0 = dir2[1]
+    # dir2_z0 = dir2[2]
 
     # Multiplying dir1 by Rotation Z Matrix
     dir1Gaze_yaw = np.arctan2(dir1_y0, dir1_x0)  # rotation about z axis
